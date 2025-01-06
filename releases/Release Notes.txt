@@ -1,0 +1,83 @@
+2024-12-15
+v2.2.1 验收
+报表输出优化：
+    Report 添加 identify_name 属性作为 Report 的唯一识别号，主报告的值为 main，其他内容为 Report 在 all_report 中的排序。
+    套件报告页中各独立报告的 summary 子表中，标题的打印文件夹名称修改为打印路径，并且添加 identify_name 作为识别号。
+    套件报告页中 CaseHasFailed 在各独立报告的 CaseDetail 子表中，标题的打印文件夹名称修改为 identify_name。
+    套件报告页中 CaseRecord 子表中，RecordDetails 列的括号外内容由文件夹名称修改为 identify_name。
+    套件报告页中各独立报告子表之间的空白行由 1 行修改为 2 行。
+优化主报告判定逻辑，仍以 case 数最多为判定条件，如果 total 数一致，则以创建时间最早的报告为判定条件。
+优化 case 合并状态的判定逻辑，由于存在例如同一个 case 在不同报告中有 pass 的结果又有 ignore 的结果（即多种非 Failed 结果）的情况，为避免重复判定计数而设置优先级：passed > assumption_failure > ignored > failed
+修复合并更新时意外出现查找不到 case 的报错：这是因为对 pandas.DataFrame 的 NaN 数据类型判断逻辑有误，导致没有结果的 Report 在添加 case_record 时未被跳过，已用 pandas.isna() 替换。
+修复报错 AttributeError: 'NoneType' object has no attribute 'iloc'：当独立报告不存在 device_info，但又需要检查 SPL 且 SPL 有误时，device_info 为 None 但却要添加 SPL 有误的高亮标签。
+修复 verify_oem_key.py 的验证报表因 column_name 冲突导致的报错：column_name 原使用品牌的匹配结果，但当品牌匹配失败时值为 None，当有多个失败结果时则产生多个重复的 column_name，现 column_name 使用 ReportPath.logical。
+
+2024-12-09
+v2.2 更新发布
+整改：
+1、鉴于 Android 14 的 VTS 套件报告的 device info 无法获取“ro.build.version.security_patch”导致 NoneTypeError，因此 SPL 检查改成使用 summary 的“Security Patch”。
+2、由于报告中的时间字符串的时区存在大量非标准情况导致 AssertionError，因此该字符串将仅用作生成文件夹名称，不再验证解析值，实际报告的开始时间直接使用报告中的时间戳参数。
+3、修复报错：代码逻辑缺陷导致 ReportRecord.still_failed() 在应该返回 False 时返回 None 而产生 TypeError。
+4、修复异常：因为 list*n 的复制逻辑，导致任何报告的 diff summary 都会扩散到所有报告的 diff_list 中，进而导致 Top sheet 的 Daily Build 和 Note 列出现主报告的内容。
+5、修复异常：因为 json 文件解析时会自动转义特殊字符，导致 device info 子表中的 fingerprint 不会显示反斜杠。
+6、修复异常：跨套件检查 summary 的函数未调用
+优化：
+1、device-info 页的列宽将能够自适应内容
+2、SuiteReport 无条件递归搜索任何 Report，无论路径或压缩路径的位置
+
+2024-11-07
+v2.1 更新发布
+1、为适应 2.0 试用反馈需求，重构了 utils 模块。
+2、添加 .html 解析数据与 .xml 解析数据的交叉验证以及对所有非数值型 summary 内容的交叉验证。
+3、修复报错（put_reports_into_storage.py）：
+	（1）、取消了 CTS_VERIFIER 对 case 的 failure details 的验证，因为存在没有 message 的情况（TypeError: 'NoneType' object is not subscriptable'）。
+	（2）、压缩包释放 TVTS 的 host-log-dumps 文件夹内容时，因路径过长导致创建文件句柄失败，raise FileNotFoundError。
+4、generate_XTS_synthesis_report.py 修正和补充：
+	（1）、主报告判断条件使用 Report 的 module_total_case_num 而不是 module_total_num
+	（2）、新增可选参数 --unpack，使用时命令除了读取文件夹，还会读取同路径下的压缩包。压缩包的标准内容结构等同于独立报告文件夹右键压缩至同名压缩包；压缩包将会解压至 .unpack 文件夹下，该文件夹每次运行脚本命令时会清空；与已存在的独立报告文件夹比较，同名压缩包和解压后同名的独立报告文件夹将被忽略。
+	（3）首页中的 Result 列根据结果使用不同颜色高亮。没有对应套件的报告则显示“NA”。
+	（4）套件 summary 页的内容修改为：（自上而下）
+		a、合并后数值总览子表
+		b、合并后存在 Fail 记录的 Case（即 CaseHasFailed）在所有 Report 中的记录子表
+		c、主报告的 Summary 子表，如果 SPL 有异常则红色高亮
+		d、主报告中 CaseHasFailed 的 detail 子表（如果在主报告中有记录的话），没有则缺省
+		e、主报告中 incomplete 的 module 子表，没有则缺省
+		f、补充报告（即非主报告）的 summary 子表，添加纵向校验：如有与主报告 summary 不一致的条目（前三后四）则对应的值单元格黄色高亮
+		g、补充报告中 CaseHasFailed 的 detail 子表（如果在该报告中有记录的话），没有则缺省
+		h、按文件夹创建时间从最近到最远的顺序，依次遍历补充报告的 6 和 7
+5、verify_oem_key.py 新增需求实现：
+	（1）支持递归搜索 --dir 给定路径下所有可用的 Report，包括文件夹和压缩包。
+	（2）支持将验证结果导出为 .xlsx 作为验证报告，内容格式与综合报表的 device_info sheet 类似，如果无法从参考映射表中找到品牌，则验证报告中 fingerprint 参数值所在单元格将会黄色高亮；如果 oem.key 验证错误，则验证报告中 oem.key1 参数值所在单元格将会红色高亮。
+6、添加了对非标准时区 AST 和 MYT 的解析，解决已知的非标准时区解析失败的问题。
+7、添加横向校验：套件间 summary 值（Fingerprint、Release (SDK)、ABIs）进行对比检查，如果不一致，则所有套件 summary 页的 Main Report Summary 对应值单元格会黄色高亮。
+8、新增支持对.rar的判断和解压，现在压缩文件相关的搜索和读取支持.zip和.rar。
+
+2024-09-27
+v2.0 试用发布
+1、添加对 .xml 文件的解析以支持对 Verifier 报告的解析，核心解析逻辑由 .html 重构为 .xml。
+2、添加保留历史生成记录的功能，添加新参数 --history。
+3、优化 case 与 module 的状态判定逻辑。
+4、优化合并更新逻辑，case 与 module 的所有相关数值都有对应的合并更新逻辑（特别是 v1 不支持的 pass 数统计），套件报告 summary 页添加合并更新后的 case 与 module 数值子表。
+5、添加对 suite / build 校验的能力。
+6、添加对 security patch 校验的能力。
+7、修改内容：首页的 note 不再放 fail case 和 incomplete module，而是放与主报告套件版本不同的独立报告的 module 和 case 内容。
+8、优化排版：套件报告 summary 页中各子表之间加空行。
+9、新增整理独立报告入库的命令脚本：put_reports_into_storage.py
+10、新增验证 oem key 的命令脚本：verify_oem_key.py
+
+2024-09-04
+v1.1 试用发布
+修复报错：
+	获取已加载的 failed 项时报错：ValueError: not enough values to unpack (expected 2, got 1)
+	添加样式标签时报错：TypeError: can only concatenate str (not "int") to str
+修改报表中 failed 项的表头
+优化合并更新 failed 和 incomplete 的逻辑，减少解析文件的次数以减少运行耗时和资源占用
+添加合并更新时的提示，防止误判成卡死
+添加报表中第一个子表的 note 列有多行内容时显示自动换行的效果
+
+2024-09-03
+修正 install 命令：去除--no-index
+修正使用说明：输入 --dir 参数时如果带有空格则要添加双引号
+
+2024-09-02
+v1.0 试用发布
